@@ -1,0 +1,347 @@
+---
+title: "Tempo de permanência docente e desempenho no Enade"
+output: flexdashboard::flex_dashboard
+---
+```{r}
+library(rbokeh)
+library(data.table)
+library(lubridate)
+indicadores <- fread('/home/pedro/Documentos/Inep/Novos_Indicadores/Permanencia_Docente/Dados/INDICADORES_ENADE(2).txt', encoding = 'Latin-1')
+dados <- fread('dados.txt')
+dados_cursos <- dados[, list(N_DOCENTE = .N, MEDIA_PERMANENCIA = mean(TEMPO_PERMANENCIA),
+                             MEDIANA_ENADE = median(TEMPO_PERMANENCIA)),
+                      by = list(NO_CINE_ROTULO, CO_CURSO, DS_MODALIDADE, DS_ORG_ACADEMICA,
+                                DS_CATEGORIA_ADM_PP, TIPO, QT_MATRICULA_TOTAL, DT_INICIO_FUNCIONAMENTO)]
+rm(dados)
+
+
+temp <- merge(dados_cursos, indicadores, by = 'CO_CURSO')
+temp <- temp[order(NU_ANO_EDICAO, decreasing = T)]
+temp <- temp[!duplicated(temp[,CO_CURSO])]
+temp$DT_INICIO_FUNCIONAMENTO <- dmy_hms(temp$DT_INICIO_FUNCIONAMENTO)
+temp <- temp[, IDADE_CURSO := 2020 - year(DT_INICIO_FUNCIONAMENTO)]
+temp <- temp[, FAIXA_IDADE := cut(temp$IDADE_CURSO, breaks = c(2, 6, 10, 14, Inf),
+                                  labels = c('2 a 6 anos', '6 a 10 anos', '10 a 14 anos', 'mais de 14 anos'),
+                                  include.lowest = T, ordered_result = TRUE)]
+temp[, VL_NOTA_BRUTA := 0.25*VL_NOTA_BRUTA_FG + 0.75*VL_NOTA_BRUTA_CE]
+```
+
+
+Introdução 
+=====================================  
+
+
+**Objetivo:** 
+
+Verificar se existe alguma relação entre o tempo de permanência dos decentes nos cursos e o desempenho dos estudantes no Enade. 
+
+**Metodologia:** 
+
+Os cursos que serão analisados serão aqueles que estão com *status* ativo no ano de 2018 na base do Censo da Educação Superior (CENSUP) e que participaram das edições do Enade de 2016, 2017 ou 2018. 
+
+Para verificar quanto tempo um docente está vinculado a um determinado curso foi utilizado os dados do Censo da Educação Superior (CENSUP) dos anos de 2009 à 2018, assim sendo, a escala de permanência será de 1 a 10 anos. Em seguida, será verificado o tempo médio de permanência dos docentes em cada curso. 
+
+Como indicador de qualidade será utilizado a nota obtida pelo curso no Enade (nota contínua). Serão retirados do cálculo todos aqueles cursos que ficaram com a nota "Sem Conceito". 
+
+Para verificar se existe alguma relação entre as variáveis estudadas (tempo médio de permanência dos docentes e desempenho no Enade) será utilizado o Coeficiente de Correlação de Pearson. Este coeficiente mede o grau da correlação entre as variáveis. Foi estabelecido que o coeficiente acima de 0,7 determina uma correlação forte e positiva, isto é, quanto maior o tempo médio dos docentes nos cursos maior é o desempenho no Enade; um coeficiente entre 0,3 e 0,7 determina uma correlação moderada; e um coeficiente abaixo de 0,3 determina que não foi encontrado correlação entre as variáveis estudadas. Cabe ressaltar que o Coeficiente de Correlação de Pearson apresenta valores entre -1 e 1 e quando os valores encontrados são negativos há uma correlação inversa, ou seja, considerando as variáveis em estudo, significa que quanto menor o tempo médio dos docentes nos cursos melhor é o desempenho daquele curso no Enade. Por isso, achou-se necessário considerar como sem correlação todas aquelas medidas que estão abaixo de 0,3 (no caso o intervalo entre -1 e 0,3). 
+
+Como há uma variabilidade muito grande entre os cursos, cada curso será agrupado seguindo o Rótulo do Cine Brasil, a Modalidade de Ensino, a Organização Acadêmica e a Categoria Administrativa e assim será calculado a correlação para cada um destes grupos. 
+
+Além dos grupos mencionados acima, foi necessária distinguir os cursos por faixas de data de funcionamento, pois aqueles cursos mais recentes tendem a ter uma média de permanência dos docentes menor o que poderia afetar o estudo. Deste modo os cursos foram separados em quatro faixas, cursos com 2 a 6 anos de duração, cursos com 6 a 10 anos de duração, cursos com 10 a 14 anos de duração e cursos com mais de 14 anos de duração. 
+
+
+Grau Acadêmico
+=====================================     
+
+Colunm{.tabset}
+--------------------------
+### Bacharelado
+```{r}
+bacharelado <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, TIPO, FAIXA_IDADE)][TIPO == 'Bacharelado']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(bacharelado)[1])) %>%
+  ly_points(r, data = bacharelado, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(bacharelado)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(bacharelado)[1], color = '#FFD700')
+
+#bacharelado[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(bacharelado$FX_CORRELACAO))
+
+
+```
+
+### Licenciatura
+```{r}
+licenciatura <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, TIPO, FAIXA_IDADE)][TIPO == 'Licenciatura']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(licenciatura)[1])) %>%
+  ly_points(r, data = licenciatura, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(licenciatura)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(licenciatura)[1], color = '#FFD700')
+
+#licenciatura[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(licenciatura$FX_CORRELACAO))
+
+```
+
+
+### Tecnológico
+```{r}
+tecnologico <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, TIPO, FAIXA_IDADE)][TIPO == 'Tecnologico']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(tecnologico)[1])) %>%
+  ly_points(r, data = tecnologico, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(tecnologico)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(tecnologico)[1], color = '#FFD700')
+
+#tecnologico[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(tecnologico$FX_CORRELACAO))
+```
+
+
+
+Colunm{data-width=200}
+---------------------------
+### Cometários
+
+**Bacharel:**
+
+Dos 337 rótulos 67,7% não mostraram correlação entre as variáveis, 22,2% mostraram uma correlação moderada e 10,1% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+**Licenciatura:**
+
+Dos 102 rótulos 79,3% não mostraram correlação entre as variáveis, 15,9% mostram uma correlação moderada e 4,9% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+**Tecnológico:**
+
+Dos 125 rótulos 78,9% não mostraram correlação entre as variáveis, 13,8% mostram uma correlação moderada e 7,3% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+
+Modalidade de Ensino
+==============================
+
+Colunm{.tabset}
+------------------------------
+
+### Presencial
+```{r}
+presencial <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_MODALIDADE, FAIXA_IDADE)][DS_MODALIDADE == 'Educação Presencial']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(presencial)[1])) %>%
+  ly_points(r, data = presencial, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(presencial)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(presencial)[1], color = '#FFD700')
+
+#presencial[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(presencial$FX_CORRELACAO))
+```
+
+
+### EaD
+```{r}
+ead <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_MODALIDADE, FAIXA_IDADE)][DS_MODALIDADE == 'Educação a Distância']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(ead)[1])) %>%
+  ly_points(r, data = ead, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(ead)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(ead)[1], color = '#FFD700')
+
+ead[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+prop.table(table(ead$FX_CORRELACAO))
+```
+
+
+Colunm{data-width=200}
+-----------------------------
+### Cometários
+
+**Presencial**
+
+Dos 526 rótulos de cursos presenciais 73,8% não mostraram correlação entre as variáveis, 18,9% mostram uma correlação moderada e 7,3% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria, entre 2 e 5 cursos, o que pode ter contribuído para este resultado.
+
+**EaD**
+
+Dos 60 rótulos de cursos a distância 81,3% não mostraram correlação entre as variáveis, 8,3% mostram uma correlação moderada e 10,4% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+
+
+Organização Acadêmica
+==============================
+Colunm{.tabset}
+-----------------------------
+
+### Universidade
+```{r}
+universidade <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA, na.rm = T),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA, na.rm = T),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_ORG_ACADEMICA, FAIXA_IDADE)][DS_ORG_ACADEMICA == 'Universidade']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(universidade)[1])) %>%
+  ly_points(r, data = universidade, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(universidade)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(universidade)[1], color = '#FFD700')
+
+# universidade[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+# prop.table(table(universidade$FX_CORRELACAO))
+```
+
+
+### Faculdade
+```{r}
+faculdade <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA, na.rm = T),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA, na.rm = T),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_ORG_ACADEMICA, FAIXA_IDADE)][DS_ORG_ACADEMICA == 'Faculdade']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(faculdade)[1])) %>%
+  ly_points(r, data = faculdade, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(faculdade)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(faculdade)[1], color = '#FFD700')
+
+faculdade[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+prop.table(table(faculdade$FX_CORRELACAO))
+```
+
+### Centro Universitário
+```{r}
+c_universidade <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA, na.rm = T),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA, na.rm = T),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_ORG_ACADEMICA, FAIXA_IDADE)][DS_ORG_ACADEMICA == 'Centro Universitário']
+
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(c_universidade)[1])) %>%
+  ly_points(r,
+            data = c_universidade,
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(c_universidade)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(c_universidade)[1], color = '#FFD700')
+
+#c_universidade[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(c_universidade$FX_CORRELACAO))
+```
+
+### IF/CEFET
+```{r}
+ifcefet <- temp[, .(r = round(cor(MEDIA_PERMANENCIA, VL_NOTA_BRUTA,"pairwise.complete.obs"), 3),
+                       QUANTIDADE_CURSOS = .N,
+                       MEDIA_NOTA_ENADE_CONTINUA = mean(VL_NOTA_BRUTA, na.rm = T),
+                       MEDIANA_NOTA_ENADE_CONTINUA = median(VL_NOTA_BRUTA, na.rm = T),
+                       DP_NOTA_ENADE_CONTINUO = sd(VL_NOTA_BRUTA, na.rm = T),
+                       TOTAL_MATRICULADOS = sum(QT_MATRICULA_TOTAL)),
+                    by = list(NO_CINE_ROTULO, DS_ORG_ACADEMICA, FAIXA_IDADE)][DS_ORG_ACADEMICA == 'IF/CEFET']
+figure(width = 900, height = 500, toolbar_location = 'right',
+       ylim = c(-1,0,0.3,0.7,1), ylab = 'Coeficiente de Correlação de Pearson',
+       xaxes = FALSE, xlim = c(-0.5, dim(ifcefet)[1])) %>%
+  ly_points(r, data = ifcefet, 
+            color = FAIXA_IDADE,
+            hover = list(Correlação = r, Rótulo = NO_CINE_ROTULO, Cursos = QUANTIDADE_CURSOS)) %>% 
+  ly_abline(0.7, 0, type = 2) %>% 
+  ly_abline(0.3, 0, type = 2) %>% 
+  ly_rect(ybottom = 0.7, ytop = 1, xleft = 0, xright = dim(ifcefet)[1], color = '#9AFF9A') %>% 
+  ly_rect(ybottom = 0.3, ytop = 0.7, xleft = 0, xright = dim(ifcefet)[1], color = '#FFD700')
+
+#ifcefet[, FX_CORRELACAO := ifelse(r < .3, 1, ifelse(r >= .3 & r < .7, 2, 3))]
+#prop.table(table(ifcefet$FX_CORRELACAO))
+
+```
+
+Colunm{data-width=200}
+----------------------------
+
+### Comentários
+**Universidade**
+
+Dos 496 rótulos de cursos em universiades 67,7% não mostraram correlação entre as variáveis, 21,9% mostram uma correlação moderada e 10,4% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+**Faculdade**
+
+Dos 356 rótulos de cursos em faculdades 69,3% não mostraram correlação entre as variáveis, 19,3% mostram uma correlação moderada e 11,4% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+**Centro Universitário**
+
+Dos 332 rótulos de cursos em centros universitários 67,1% não mostraram correlação entre as variáveis, 18,3% mostram uma correlação moderada e 14,7% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
+**IF/CEFET**
+
+Dos 172 rótulos de cursos em IF/CEFET 64% não mostraram correlação entre as variáveis, 13% mostram uma correlação moderada e 23% mostraram uma correlação forte. Destes que mostram correlação forte haviam poucos cursos dentro da categoria o que pode ter contribuído para este resultado.
+
