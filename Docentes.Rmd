@@ -1,0 +1,211 @@
+---
+title: "Tabset Row"
+resource_files:
+- dados.csv
+runtime: shiny
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+---
+```{r}
+library(data.table)
+library(ggplot2)
+library(flexdashboard)
+library(lubridate)
+dados <- fread('dados.txt')
+dados$DT_INICIO_FUNCIONAMENTO <- dmy_hms(dados$DT_INICIO_FUNCIONAMENTO)
+dados[, ANO_INICIO_FUNCIONAMENTO := year(dados$DT_INICIO_FUNCIONAMENTO)]
+dados[, TEMPO_FUNCIONAMENTO_CURSO := year(now()) - ANO_INICIO_FUNCIONAMENTO]
+curso <- dados[, .N, by = list(CO_CURSO, TIPO, TEMPO_FUNCIONAMENTO_CURSO)]
+```
+
+Page 1
+========================
+
+Row {data-height=480}
+-------------------------------------
+
+### Bacharelado
+```{r}
+renderPlot({
+ggplot(data = dados[TIPO == 'Bacharelado', .N, by = TEMPO_PERMANENCIA][, PROP := N/sum(N)],
+       aes(x= PROP, y= TEMPO_PERMANENCIA)) +
+  geom_col(fill = '#4ECDC4') +
+  scale_x_continuous(labels=scales::percent, limits = c(0,0.4)) +
+  scale_y_continuous(breaks = 1:10, labels = c(1:10)) +
+  ylab('Tempo de Pemanência Docente em anos') +
+  geom_text(aes(label = scales::percent(PROP, accuracy = 0.01, decimal.mark = ',')),
+                hjust = -.15) +
+  theme_bw()
+
+})
+
+```
+
+### Licenciatura
+```{r}
+renderPlot({
+ggplot(data = dados[TIPO == 'Licenciatura', .N, by = TEMPO_PERMANENCIA][, PROP := N/sum(N)],
+       aes(x= PROP, y= TEMPO_PERMANENCIA)) +
+  geom_col(fill = '#C7F464') +
+  scale_x_continuous(labels=scales::percent, limits = c(0,0.4)) +
+  scale_y_continuous(breaks = 1:10, labels = c(1:10)) +
+  ylab('Tempo de Pemanência Docente em anos') +
+  geom_text(aes(label = scales::percent(PROP, accuracy = 0.01, decimal.mark = ',')),
+                hjust = -.15) +
+  theme_bw()
+})
+
+```
+
+### Tecnólogicos
+```{r}
+renderPlot({
+ggplot(data = dados[TIPO == 'Tecnologico', .N, by = TEMPO_PERMANENCIA][, PROP := N/sum(N)],
+       aes(x= PROP, y= TEMPO_PERMANENCIA)) +
+  geom_col(fill = '#FF6B6B') +
+  scale_x_continuous(labels=scales::percent, limits = c(0,0.4))+
+  scale_y_continuous(breaks = 1:10, labels = c(1:10)) +
+  ylab('Tempo de Pemanência Docente em anos') +
+  geom_text(aes(label = scales::percent(PROP, accuracy = 0.01, decimal.mark = ',')),
+                hjust = -.15) +
+  theme_bw()
+})
+```
+
+
+Row {data-height=150}
+-------------------------------------
+   
+### Cursos Bac
+```{r, size=1}
+cursos_Bacharelado <- dados[TIPO == 'Bacharelado', .N, by = CO_CURSO][, .N]
+valueBox(value = scales::comma(cursos_Bacharelado, big.mark = '.', decimal.mark = ','),
+         caption = 'Cursos', color = '#4ECDC4')
+```   
+
+### Docentes Bac
+```{r, size= 2}
+docentes_Bacharelado <- dados[TIPO == 'Bacharelado', .N, by = list(TIPO, CO_DOCENTE)][, .N]
+valueBox(value = scales::comma(docentes_Bacharelado, big.mark = '.', decimal.mark = ','),
+         caption = 'Docentes', color = '#4ECDC4')
+```   
+
+
+### Cursos Lic
+```{r, size= 4}
+cursos_Licenciatura <- dados[TIPO == 'Licenciatura', .N, by = CO_CURSO][, .N]
+renderValueBox({
+  valueBox(value = scales::comma(cursos_Licenciatura, big.mark = '.', decimal.mark = ','),
+           caption = 'Cursos', color = '#C7F464')
+})
+```
+
+### Docentes lic
+```{r}
+docentes_Licenciatura <- dados[TIPO == 'Licenciatura', .N, by = list(TIPO, CO_DOCENTE)][, .N]
+valueBox(value = scales::comma(docentes_Licenciatura, big.mark = '.', decimal.mark = ','),
+         caption = 'Docentes', color = '#C7F464')
+```
+
+
+### Cursos Tec
+```{r}
+cursos_Tecnologico <- dados[TIPO == 'Tecnologico', .N, by = CO_CURSO][, .N]
+valueBox(value = scales::comma(cursos_Tecnologico, big.mark = '.', decimal.mark = ','),
+         caption = 'Cursos', color = '#FF6B6B')
+```
+
+### Docente Tec
+```{r}
+docentes_Tecnologico <- dados[TIPO == 'Tecnologico', .N, by = list(TIPO, CO_DOCENTE)][, .N]
+valueBox(value = scales::comma(docentes_Tecnologico, big.mark = '.', decimal.mark = ','),
+         caption = 'Docentes', color = '#FF6B6B')
+```
+
+Row {data-height=150}
+-------------------------------------
+### Matriculas Bac
+```{r}
+matriculados_Bacharelado <- dados[TIPO == 'Bacharelado', .N, by = list(TIPO, QT_MATRICULA_TOTAL, CO_CURSO)][,sum(QT_MATRICULA_TOTAL)]
+valueBox(value = scales::comma(matriculados_Bacharelado, big.mark = '.', decimal.mark = ','),
+          caption = 'Matriculados', color = '#4ECDC4')
+```
+
+### Matriculas lic
+```{r}
+matriculados_Licenciatura <- dados[TIPO == 'Licenciatura', .N, by = list(TIPO, QT_MATRICULA_TOTAL, CO_CURSO)][,sum(QT_MATRICULA_TOTAL)]
+valueBox(value = scales::comma(matriculados_Licenciatura, big.mark = '.', decimal.mark = ','),
+         caption = 'Matriculados', color = '#C7F464')
+```
+
+### Matriculas Tec
+```{r}
+matriculados_Tecnologico <- dados[TIPO == 'Tecnologico', .N, by = list(TIPO, QT_MATRICULA_TOTAL, CO_CURSO)][,sum(QT_MATRICULA_TOTAL)]
+valueBox(scales::comma(matriculados_Tecnologico, big.mark = '.', decimal.mark = ','),
+         caption = 'Matriculados', color = '#FF6B6B')
+```
+
+
+
+Row {data-height=190}
+-------------------------------------
+
+### Gauge bacharelado
+```{r}
+gauge(value = median(curso[TIPO == 'Bacharelado', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      min = min(curso[TIPO == 'Bacharelado', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      max = max(curso[TIPO == 'Bacharelado', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      sectors = gaugeSectors(colors = '#4ECDC4'))
+```
+
+
+### Gauge Licenciatura
+```{r}
+gauge(value = median(curso[TIPO == 'Licenciatura', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      min = min(curso[TIPO == 'Licenciatura', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      max = max(curso[TIPO == 'Licenciatura', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      sectors = gaugeSectors(colors = '#C7F464'))
+```
+
+### Gauge Tecnologicos
+```{r}
+gauge(value = median(curso[TIPO == 'Tecnologico', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      min = min(curso[TIPO == 'Tecnologico', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      max = max(curso[TIPO == 'Tecnologico', TEMPO_FUNCIONAMENTO_CURSO], na.rm = T),
+      sectors = gaugeSectors(colors = '#FF6B6B'))
+```
+
+
+Page 2
+======================================================
+  
+  Inputs {.sidebar}
+-------------------------------------
+```{r}
+selectInput("rotulo", label = h3("Rótulo Cine Brasil"), 
+            choices = sort(unique(dados$NO_CINE_ROTULO)))
+```
+
+
+Row {.tabset .tabset-fade}
+-------------------------------------
+  
+### Região
+```{r}
+
+selectedData <- reactive({
+  dados[NO_CINE_ROTULO == (input$rotulo), .N, by = list(NO_REGIAO, TEMPO_PERMANENCIA)][, PROP := N/sum(N)]
+}) # FILTRO DO ROTULO SELECIONADO NO SIDEBAR
+
+renderPlot({
+  
+  g <- ggplot(data = selectedData(), aes(y = TEMPO_PERMANENCIA, x = PROP)) +
+    geom_col() +
+    facet_wrap( ~ NO_REGIAO,nrow = 1)
+  print(g)
+})
+```
+
